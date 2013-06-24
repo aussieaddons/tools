@@ -3,7 +3,8 @@ XBMC Repository Tools
 
 Two tools are currently available.
 
-== build_xbmc_zip.py ==
+build_xbmc_zip.py
+-----------------
 
 This script can be used to generate an XBMC compliant ZIP file ready for either
 uploading to the web, or for use in an XBMC repository.
@@ -26,7 +27,8 @@ For example:
   - plugin.video.abc_iview-1.3.1.zip
   - plugin.video.abc_iview-1.3.1_deps.zip
 
-== git-hooks/pre-commit ==
+git-hooks/pre-commit
+--------------------
 
 This file is a GIT pre-commit script which should be symlinked into your GIT
 hooks directory.
@@ -43,11 +45,15 @@ and tags.
 
 When you intend to create a stable release of your addon, you must tag your
 release in GIT like this (for example, version 1.3.1)
+
 `git tag -a v1.3.1 -m 'version 1.3.1'`
 
 The script will then use this version number for writing into the addon.xml
 file. For commits which are not stable releases, the version number will be
 in the format:
-`(last.tagged.release)-(number-of-commits-since-last-tag)-(git hash)
+
+`(last.tagged.release)-(number-of-commits-since-last-tag)-(git hash)`
+
 For example:
+
 `1.3.1-6-g65535a9`

@@ -8,6 +8,7 @@ import xml.dom.minidom as DOM
 
 EXCLUDE_EXTS = ['.pyc', '.pyo', '.swp', '.zip', '.gitignore']
 EXCLUDE_DIRS = ['.git']
+EXCLUDE_FILES = []
 
 dom = DOM.parse('addon.xml')
 addon_info = dom.getElementsByTagName('addon').item(0)

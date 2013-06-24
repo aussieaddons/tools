@@ -34,7 +34,7 @@ This file is a GIT pre-commit script which should be symlinked into your GIT
 hooks directory.
 
 For example (run from your addon working directory):
-`ln -s ../tools/git-hooks/pre-commit .git/hooks/pre-commit`
+`ln -sf ../../../tools/git-hooks/pre-commit .git/hooks/pre-commit`
 
 This script does two main things; it generates an XBMC compliant changelog.txt
 and updates the version number within the addon.xml and

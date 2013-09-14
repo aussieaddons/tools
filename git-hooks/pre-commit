@@ -5,7 +5,7 @@
 # Set up like this from top dir:
 #   ln -s utils/git-hooks/pre-commit .git/hooks/pre-commit
 #
-
+import sys
 import os
 import re
 import xml.dom.minidom as DOM
@@ -25,8 +25,8 @@ def get_output(cmd):
 def get_git_version():
     n, result = get_output('git describe --tags')
     if n:
-        _print('WARNING: git describe failed with: %s %s' % (n, result))
-        return None, None
+        print('WARNING: git describe failed with: %s %s' % (n, result))
+        sys.exit(1)
 
     match = re.match(r'(?:v)(\d+).(\d+)(?:\.(\d+))?(?:-(\d+-g[0-9a-z]+))?', result, re.VERBOSE)
     if not match:
@@ -53,7 +53,6 @@ def get_git_branch():
 
 def get_version():
     ver = get_git_version()
-
     branch = get_git_branch()
     if branch != 'master' and not re.match('^v\d+$', branch):
         name = "%s-%s" % (ver, branch)
@@ -66,17 +65,18 @@ def get_version():
 def git_add_file(f):
     n, result = get_output("git add %s" % f)
     if n:
-        _print('WARNING: git add failed with: %s %s' % (n, result))
+        print('WARNING: git add failed with: %s %s' % (n, result))
         return False
     return True
  
 
 def write_version(ver):
     version_path = os.path.join(ADDON_PATH, 'resources', 'lib', 'version.py')
-    f = open(version_path, "w")
-    f.write(VERSION_PY % ver)
-    f.close()
-    git_add_file(version_path)
+    if os.path.isfile(version_path):
+        f = open(version_path, "w")
+        f.write(VERSION_PY % ver)
+        f.close()
+        git_add_file(version_path)
    
 
 def write_addon_xml_version(ver):

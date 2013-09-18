@@ -1,7 +1,19 @@
 XBMC Repository Tools
 =====
 
-Two tools are currently available.
+Three tools are currently available.
+
+make_release.py
+---------------
+
+This script is used to set the version number in the addon.xml file and generate
+the changelog.txt file with the git commit history.
+
+It 'git add's the newly updated files and commits them. Once committed, a git tag
+is issued to tag the release.
+
+Once this is done, the next script can be used to generate the final zip file.
+
 
 build_xbmc_zip.py
 -----------------

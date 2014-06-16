@@ -133,6 +133,7 @@ if __name__ == '__main__':
 
     if args.version is None:
         print("Error: version number not given (try -v 1.2.0)")
+        sys.exit(1)
 
     # Write version information
     ver = args.version

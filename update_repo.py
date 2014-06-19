@@ -1,169 +1,230 @@
 #!/usr/bin/env python
-
-import argparse
-import codecs
-import hashlib
-import json
-import re
 import os
 import os.path
 import sys
-from urllib2 import urlopen
+import re
+import hashlib
 import xml.dom.minidom as DOM
 
-repo_index = None
+from argparse import ArgumentParser
+from codecs import open
+from sh import git, cp
+from zipfile import ZipFile, ZIP_DEFLATED
 
-def fatal_error(error_msg, status_code=1):
-    sys.stderr.write("Error: %s\n" % error_msg)
-    sys.exit(status_code)
+EXCLUDE_EXTS = ['.pyc', '.pyo', '.swp', '.zip', '.gitignore']
+EXCLUDE_DIRS = ['.git']
+EXCLUDE_FILES = []
 
-def is_version_number(string):
-    try:
-        version_number(string)
-        return True
-    except argparse.ArgumentTypeError:
-        return False
+CACHE_DIR = '.cache'
+
+def version_is_gte(ver1, ver2):
+  return tuple(map(lambda x: int(x), ver1.split('.'))) >= tuple(map(lambda x: int(x), ver2.split('.')))
 
 def version_number(string):
-    match = re.match(r'(\d+).(\d+)(?:\.(\d+))?', string, re.VERBOSE)
-    if not match:
-        msg = "%r is not a valid version number" % string
-        raise argparse.ArgumentTypeError(msg)
+  match = re.match(r'(\d+).(\d+)(?:\.(\d+))?', string, re.VERBOSE)
+  if not match:
+    msg = "%r is not a valid version number" % string
+    raise argparse.ArgumentTypeError(msg)
 
-    numbers = [n for n in match.groups() if n]
-    ver = '.'.join(tuple(numbers))
-    return ver
-
-def read_repo_index():
-    global repo_index
-    if repo_index is None:
-        repo_index = DOM.parse('addons.xml')
-    return repo_index
-
-def save_repo_index():
-    if repo_index is not None:
-        f = codecs.open('addons.xml', 'w', 'utf-8')
-        repo_index.writexml(f)
-        f.close()
-        git_add_file('addons.xml')
+  numbers = [n for n in match.groups() if n]
+  ver = '.'.join(tuple(numbers))
+  return ver
 
 def calculate_md5(filename):
-    md5 = hashlib.md5()
-    block_sz = 8192
-    f = open(filename, 'rb')
-    while True:
-        buffer = f.read(block_sz)
-        if not buffer:
-            break
-        md5.update(buffer)
-    return md5.hexdigest()
+  md5 = hashlib.md5()
+  block_sz = 8192
+  f = open(filename, 'rb')
+  while True:
+    buffer = f.read(block_sz)
+    if not buffer:
+      break
+    md5.update(buffer)
+  return md5.hexdigest()
 
-def update_repo_md5():
-    md5 = calculate_md5('addons.xml')
-    f = open('addons.xml.md5', 'w')
+def fatal_error(error_msg, status_code=1):
+  sys.stderr.write("Error: %s\n" % error_msg)
+  sys.exit(status_code)
+
+class DOMParser(object):
+  def __init__(self, filename, dom=None, parent=None):
+    self.filename = filename
+    self.dom = dom or DOM.parse(self.filename)
+    self.parent = parent
+
+  def save(self):
+    if self.parent:
+      self.parent.save()
+    else:
+      f = open(self.filename, 'w', 'utf-8')
+      self.dom.writexml(f)
+      f.close()
+
+class AddonIndexParser(DOMParser, dict):
+  def __init__(self, filename='addons.xml', **kwargs):
+    DOMParser.__init__(self, filename, **kwargs)
+    dict.__init__(self)
+    self.parse()
+
+  def parse(self):
+    for addon_dom in self.dom.getElementsByTagName('addon'):
+      addon = AddonParser(dom=addon_dom, parent=self)
+      self[addon['id']] = addon
+
+  def update_md5(self):
+    md5 = calculate_md5(self.filename)
+    f = open('%s.md5' % self.filename, 'w')
     f.write(md5)
     f.close()
-    git_add_file('addons.xml.md5')
 
-def find_addon(addon_id):
-    dom = read_repo_index()
-    addons = dom.getElementsByTagName('addon')
-    for addon in addons:
-        if addon.getAttribute('id') == addon_id:
-            return addon
+  def save(self):
+    DOMParser.save(self)
+    self.update_md5()
 
-def fetch_tags(repo_name):
-    url = 'https://api.github.com/repos/xbmc-catchuptv-au/%s/tags' % repo_name
-    return json.load(urlopen(url))
+class AddonParser(DOMParser, dict):
+  def __init__(self, filename='addon.xml', **kwargs):
+    DOMParser.__init__(self, filename, **kwargs)
+    dict.__init__(self)
+    self.parse()
 
-def filter_tags(repo_name):
-    tags = fetch_tags(repo_name)
-    return filter(lambda tag: is_version_number(tag['name'][1::]), tags)
+  def parse(self):
+    self['id'] = self.dom.getAttribute('id')
+    self['name'] = self.dom.getAttribute('name')
+    self['version'] = self.dom.getAttribute('version')
+    self['metadata'] = self.parse_metadata()
 
-def find_tag(repo_name, tag_name):
-    tags = fetch_tags(repo_name)
-    for tag in tags:
-        if tag['name'] == tag_name:
-            return tag
+  def parse_metadata(self):
+    metadata = dict()
 
-def find_latest_tag(repo_name):
-    tags = filter_tags(repo_name)
-    return sorted(tags, key=lambda tag: tag['name'].split('.'), reverse=True)[0]
+    for extension in self.dom.getElementsByTagName('extension'):
+      if extension.getAttribute('point') == 'xbmc.addon.metadata':
+        for node in extension.childNodes:
+          if node.nodeType == node.ELEMENT_NODE:
+            rc = []
+            for subnode in node.childNodes:
+              if subnode.nodeType == subnode.TEXT_NODE:
+                rc.append(subnode.data)
+            metadata[node.tagName.lower()] = ''.join(rc)
 
-def download_file(url, out):
-    u = urlopen(url)
-    if os.path.isfile(out):
-        fatal_error("File already exists: %s" % out)
-    f = open(out, 'wb')
-    print "Downloading %s" % url
+    return metadata
 
-    block_sz = 8192
-    while True:
-        buffer = u.read(block_sz)
-        if not buffer:
-            break
-        f.write(buffer)
+  def update_version(self, version):
+    self.dom.setAttribute('version', version)
+    self.save()
 
-    f.close()
+class AddonCache():
+  def __init__(self, addon):
+    self.addon = addon
+    self.source = addon['metadata']['source']
+    self.dir = os.path.join(CACHE_DIR, addon['id'])
+    self.git = git.bake(_cwd=self.dir)
+    self.update()
 
-def download_addon(addon_id, tag):
-    version = tag['name'][1::]
-    download_file(tag['zipball_url'], "%s/%s-%s.zip" % (addon_id, addon_id, version))
-    git_add_file("%s/%s-%s.zip" % (addon_id, addon_id, version))
-    download_file("https://raw.githubusercontent.com/xbmc-catchuptv-au/%s/v%s/changelog.txt" % (addon_id, version), "%s/changelog-%s.zip" % (addon_id, version))
-    git_add_file("%s/changelog-%s.zip" % (addon_id, version))
+  def is_dirty(self):
+    dirty_state = self.git("diff", "--no-ext-diff", "--quiet", "--exit-code", _ok_code=[0,1]).exit_code == 1
+    uncommited_changes = self.git("diff-index", "--cached", "--quiet", "HEAD", "--", _ok_code=[0,1]).exit_code == 1
+    untracked_files = self.git("ls-files", "--others", "--exclude-standard", "--error-unmatch", "--", "'*'", _out=None, _err=None, _ok_code=[0,1]).exit_code != 1
+    return dirty_state or uncommited_changes or untracked_files
 
-def get_output(cmd):
-    pipe = os.popen(cmd, 'r')
-    text = pipe.read().rstrip('\n')
-    status = pipe.close() or 0
-    return status, text
+  def checkout(self, tag):
+    self.git.checkout(tag)
 
-def git_add_file(f):
-    n, result = get_output("git add \"%s\"" % f)
-    if n:
-        print('WARNING: git add failed with: %s %s' % (n, result))
-        return False
-    return True
+  def update(self):
+    if not os.path.isdir(CACHE_DIR):
+      os.makedirs(CACHE_DIR)
 
-def git_commit(message):
-    n, result = get_output("git commit --no-verify -m '%s'" % message)
-    if n:
-        print('WARNING: git commit failed with: %s %s' % (n, result))
-        return False
+    if os.path.isdir(self.dir):
+      if self.is_dirty():
+        fatal_error("%s is dirty" % self.dir)
+      git.checkout('master')
+      git.pull()
+    else:
+      def process_output(line):
+        print(line)
+
+      git.clone(addon['metadata']['source'], self.dir)
+
+  def get_tags(self):
+    return filter(lambda tag: re.match(r'^v(\d+).(\d+)(?:\.(\d+))?$', tag), self.git.tag().split("\n"))
+
+  def get_latest_tag(self):
+    return 'v%s' % '.'.join(map(lambda x: str(x), sorted(map(lambda tag: tuple(map(lambda x: int(x), tag[1::].split('.'))), self.get_tags()), reverse=True)[0]))
+
+  def write_zip(self, filename):
+    # from build_xbmc_zip.py
+
+    z = ZipFile(filename, 'w')
+    for r, d, f in os.walk(self.dir):
+      for ff in f:
+        skip = False
+
+        # If it's not one of the files we're excluding
+        for ext in EXCLUDE_EXTS:
+          if ff.endswith(ext):
+            skip = True
+
+        # Skip any files
+        for fn in EXCLUDE_FILES:
+          if ff == fn:
+            skip = True
+
+        # Skip any directories
+        for dr in EXCLUDE_DIRS:
+          if r.find(dr) > -1:
+            skip = True
+
+        if not skip:
+          z.write(os.path.join(r, ff), os.path.join(self.addon['id'], os.path.relpath(r, self.dir), ff), ZIP_DEFLATED)
+
+    z.close()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Update XBMC Addon Repo')
-    parser.add_argument('ADDON_ID', help='Addon Unique Identifier, e.g. plugin.video.catchuptv.au.ten')
-    parser.add_argument('-v', '--version', type=version_number, help='version number')
-    parser.add_argument('-f', '--force', type=bool, help='Force update when version is lower than existing')
-    args = parser.parse_args()
+  parser = ArgumentParser(description='Unoffical XBMC Addon Repo Updater Tool')
+  parser.set_defaults(commit=True, force=False)
+  parser.add_argument('addon_id', help='Addon Unique Identifier, e.g. plugin.video.catchuptv.au.ten')
+  parser.add_argument('-v', '--version', type=version_number, help='Specify specific version to update to')
+  parser.add_argument('-f', '--force', dest='force', action='store_true', help='Force update when version is older than the version currently in the repo')
+  parser.add_argument('-nc', '--no-commit', dest='commit', action='store_false', help='Do not automatically commit changes')
+  args = parser.parse_args()
 
-    addon = find_addon(args.ADDON_ID)
-    if addon is None:
-        fatal_error("Could not find \"%s\" in addons.xml" % args.ADDON_ID)
+  print("Reading addons.xml")
+  addons = AddonIndexParser()
+  if not addons.has_key(args.addon_id):
+    fatal_error("%s not found in addons.xml" % args.addon_id)
 
-    if args.version is None:
-        tag = find_latest_tag(args.ADDON_ID)
+  addon = addons[args.addon_id]
+  if not addon['metadata'].has_key('source'):
+    fatal_error("%s does not define a source in addons.xml" % addon['id'])
 
-        if tag is None:
-            fatal_error("No suitable tags found, ensure tag names are in the v0.1.2 format")
-    else:
-        tag = find_tag(args.ADDON_ID, 'v%s' % args.version)
+  print("Updating: %s" % addon['id'])
+  cache = AddonCache(addon)
 
-        if tag is None:
-            fatal_error("Could not find tagged version v%s" % args.version)
+  version = args.version
+  if version:
+    tag = 'v' % version
+  else:
+    tag = cache.get_latest_tag()
+    version = tag[1::]
 
-    existing_addon_version = addon.getAttribute('version')
-    new_addon_version = tag['name'][1::]
+  if not version_is_gte(version, addon['version']) and not args.force:
+    fatal_error("Version specified (%s) is older than version in repo (%s)" % (version, addon['version']))
 
-    if not args.force and existing_addon_version.split('.') >= new_addon_version.split('.'):
-        fatal_error("Addon in repo is the same version or higher (%s) than what is to be updated with (%s)" % (existing_addon_version, new_addon_version))
+  print("Checking out: %s" % tag)
+  cache.checkout(tag)
 
-    print "Updating %s to %s" % (args.ADDON_ID, tag['name'])
-    download_addon(args.ADDON_ID, tag)
+  print("Writing ZIP file: %s" % '%s-%s.zip' % (addon['id'], version))
+  cache.write_zip(os.path.join(addon['id'], '%s-%s.zip' % (addon['id'], version)))
+  git.add(os.path.join(addon['id'], '%s-%s.zip' % (addon['id'], version)))
+  print("Writing icon file: %s" % 'icon.png')
+  cp(os.path.join(cache.dir, 'icon.png'), os.path.join(addon['id'], 'icon.png'))
+  git.add(os.path.join(addon['id'], 'icon.png'))
+  print("Writing changelog: %s" % ('changelog-%s.txt' % version))
+  cp(os.path.join(cache.dir, 'changelog.txt'), os.path.join(addon['id'], 'changelog-%s.txt' % version))
+  git.add(os.path.join(addon['id'], 'changelog-%s.txt' % version))
 
-    addon.setAttribute('version', new_addon_version)
-    save_repo_index()
-    update_repo_md5()
-    git_commit("Update %s to %s" %  args.ADDON_ID, tag['name'])
+  print("Updating addons.xml")
+  addon.update_version(version)
+  git.add('addons.xml')
+  git.add('addons.xml.md5')
+
+  if args.commit:
+    git.commit(message="Update %s to %s" % (addon['name'], version))

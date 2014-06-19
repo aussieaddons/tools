@@ -1,7 +1,7 @@
 XBMC Repository Tools
 =====
 
-Three tools are currently available.
+These tools are currently available.
 
 make_release.py
 ---------------
@@ -38,6 +38,20 @@ addon.xml file which is required for the addon.
 For example:
   - plugin.video.abc_iview-1.3.1.zip
   - plugin.video.abc_iview-1.3.1_deps.zip
+
+update_repo.py
+---------------
+
+This script is used to update the repository with new versions of addons.
+
+Requires the addon to specify a git source in it's `addon.xml`.
+
+Requires [sh](https://github.com/amoffat/sh) to be installed:
+
+```
+$> pip install sh
+```
+
 
 git-hooks/pre-commit
 --------------------

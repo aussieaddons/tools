@@ -135,12 +135,9 @@ class AddonCache():
     if os.path.isdir(self.dir):
       if self.is_dirty():
         fatal_error("%s is dirty" % self.dir)
-      git.checkout('master')
-      git.pull()
+      self.git.checkout('master')
+      self.git.pull()
     else:
-      def process_output(line):
-        print(line)
-
       git.clone(addon['metadata']['source'], self.dir)
 
   def get_tags(self):

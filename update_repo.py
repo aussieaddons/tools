@@ -200,7 +200,7 @@ if __name__ == '__main__':
 
   version = args.version
   if version:
-    tag = 'v' % version
+    tag = 'v%s' % version
   else:
     tag = cache.get_latest_tag()
     version = tag[1::]

@@ -111,6 +111,10 @@ def write_changelog(ver):
                 if commit.lower() == ('version %s' % tags[i][1::]):
                     continue
 
+                # Skip merge commits
+                if commit.startswith('Merge pull request') or commit.startswith('Merge branch'):
+                    continue
+
                 f.write("- %s\n" % commit)
             f.write("\n")
 

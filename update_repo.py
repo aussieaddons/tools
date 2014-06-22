@@ -117,7 +117,7 @@ class AddonCache():
     self.source = addon['metadata']['source']
     self.dir = os.path.join(CACHE_DIR, addon['id'])
     self.git = git.bake(_cwd=self.dir)
-    self.update()
+    self.reset()
 
   def is_dirty(self):
     dirty_state = self.git("diff", "--no-ext-diff", "--quiet", "--exit-code", _ok_code=[0,1]).exit_code == 1
@@ -128,14 +128,17 @@ class AddonCache():
   def checkout(self, tag):
     self.git.checkout(tag)
 
+  def reset(self):
+    if os.path.isdir(self.dir):
+      if self.is_dirty():
+        fatal_error("%s is dirty" % self.dir)
+      self.git.checkout('master')
+
   def update(self):
     if not os.path.isdir(CACHE_DIR):
       os.makedirs(CACHE_DIR)
 
     if os.path.isdir(self.dir):
-      if self.is_dirty():
-        fatal_error("%s is dirty" % self.dir)
-      self.git.checkout('master')
       self.git.pull()
     else:
       git.clone(addon['metadata']['source'], self.dir)
@@ -176,11 +179,12 @@ class AddonCache():
 
 if __name__ == '__main__':
   parser = ArgumentParser(description='Unoffical XBMC Addon Repo Updater Tool')
-  parser.set_defaults(commit=True, force=False)
+  parser.set_defaults(commit=True, force=False, update=True)
   parser.add_argument('addon_id', help='Addon Unique Identifier, e.g. plugin.video.catchuptv.au.ten')
   parser.add_argument('-v', '--version', type=version_number, help='Specify specific version to update to')
   parser.add_argument('-f', '--force', dest='force', action='store_true', help='Force update when version is older than the version currently in the repo')
   parser.add_argument('-nc', '--no-commit', dest='commit', action='store_false', help='Do not automatically commit changes')
+  parser.add_argument('-nu', '--no-update', dest='update', action='store_false', help='Do not automatically update repo cache')
   args = parser.parse_args()
 
   print("Reading addons.xml")
@@ -192,8 +196,10 @@ if __name__ == '__main__':
   if not addon['metadata'].has_key('source'):
     fatal_error("%s does not define a source in addons.xml" % addon['id'])
 
-  print("Updating: %s" % addon['id'])
   cache = AddonCache(addon)
+  if args.update:
+    print("Updating: %s" % addon['id'])
+    cache.update()
 
   version = args.version
   if version:

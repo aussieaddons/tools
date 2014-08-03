@@ -231,4 +231,4 @@ if __name__ == '__main__':
   git.add('addons.xml.md5')
 
   if args.commit:
-    git.commit(message="Update %s to %s" % (addon['name'], version))
+    git.commit(message="Update %s to v%s" % (addon['name'], version))

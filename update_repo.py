@@ -217,9 +217,10 @@ if __name__ == '__main__':
   print("Writing ZIP file: %s" % '%s-%s.zip' % (addon['id'], version))
   cache.write_zip(os.path.join(addon['id'], '%s-%s.zip' % (addon['id'], version)))
   git.add(os.path.join(addon['id'], '%s-%s.zip' % (addon['id'], version)))
-  print("Writing icon file: %s" % 'icon.png')
-  cp(os.path.join(cache.dir, 'icon.png'), os.path.join(addon['id'], 'icon.png'))
-  git.add(os.path.join(addon['id'], 'icon.png'))
+  if os.path.isfile(os.path.join(cache.dir, 'icon.png')):
+    print("Writing icon file: %s" % 'icon.png')
+    cp(os.path.join(cache.dir, 'icon.png'), os.path.join(addon['id'], 'icon.png'))
+    git.add(os.path.join(addon['id'], 'icon.png'))
   print("Writing changelog: %s" % ('changelog-%s.txt' % version))
   cp(os.path.join(cache.dir, 'changelog.txt'), os.path.join(addon['id'], 'changelog-%s.txt' % version))
   git.add(os.path.join(addon['id'], 'changelog-%s.txt' % version))

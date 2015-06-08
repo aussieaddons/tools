@@ -48,7 +48,7 @@ def fatal_error(error_msg, status_code=1):
 class DOMParser(object):
   def __init__(self, filename, dom=None, parent=None):
     self.filename = filename
-    self.dom = dom or DOM.parse(self.filename)
+    self.dom = dom or DOM.parse(self.filename).documentElement
     self.parent = parent
 
   def save(self):
@@ -107,6 +107,10 @@ class AddonParser(DOMParser, dict):
 
     return metadata
 
+  def update_metadata(self, newDom):
+    self.dom.parentNode.replaceChild(newDom, self.dom)
+    self.save()
+
   def update_version(self, version):
     self.dom.setAttribute('version', version)
     self.save()
@@ -148,6 +152,9 @@ class AddonCache():
 
   def get_latest_tag(self):
     return 'v%s' % '.'.join(map(lambda x: str(x), sorted(map(lambda tag: tuple(map(lambda x: int(x), tag[1::].split('.'))), self.get_tags()), reverse=True)[0]))
+
+  def get_addon_xml(self):
+    return AddonParser(filename=os.path.join(self.dir, 'addon.xml')).dom
 
   def write_zip(self, filename):
     # from build_xbmc_zip.py
@@ -226,7 +233,7 @@ if __name__ == '__main__':
   git.add(os.path.join(addon['id'], 'changelog-%s.txt' % version))
 
   print("Updating addons.xml")
-  addon.update_version(version)
+  addon.update_metadata(cache.get_addon_xml())
   git.add('addons.xml')
   git.add('addons.xml.md5')
 

@@ -72,6 +72,7 @@ def git_commit_tag(ver):
         print('WARNING: git tag failed with: %s %s' % (n, result))
         return False
 
+    print('Don\'t forget to git push --tags :)')
     return True
 
 

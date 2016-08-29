@@ -129,6 +129,10 @@ def write_changelog():
                 if commit.find(tags[i]) > -1:
                     continue
 
+                # Skip the 'Version 0.1.2' tag commit messages
+                if commit.lower() == ('version %s' % tags[i][1::]):
+                    continue
+
                 f.write("- %s\n" % commit)
             f.write("\n")
 
